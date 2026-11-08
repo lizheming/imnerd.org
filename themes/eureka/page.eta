@@ -2,7 +2,11 @@
 <% const archive = await firekylin.widget('Widget_Archive_Eureka', {type: 'page'}); const site = await firekylin.widget('Widget_Options'); archive.next(); %>
 <% block('title', () => { %><%= archive.have() ? archive.title() : '页面未找到' %> - <%= site.title() %><% }) %>
 <% block('headers', () => { %><% if (archive.have()) { %><link rel="canonical" href="<%= site.siteUrl + archive.permalink %>"><% } %><% }) %>
-<% await blockAsync('content', async () => { %><article class="article-card page-card">
-  <% if (archive.have()) { %><h1><%= archive.title() %></h1><div class="content"><%~ archive.content() %></div><% if (archive.allow('comment')) { %><%~ await includeAsync('./inc/comment', {siteOptions: site}) %><% } %>
-  <% } else { %><h1>页面未找到</h1><div class="content"><p>没有找到这个页面。</p></div><% } %>
-</article><% }) %>
+<% await blockAsync('content', async () => { %>
+<div class=" lg:pt-12">
+  <article class="article-card page-card">
+    <% if (archive.have()) { %><h1><%= archive.title() %></h1><div class="content"><%~ archive.content() %></div><% if (archive.allow('comment')) { %><%~ await includeAsync('./inc/comment', {siteOptions: site}) %><% } %>
+    <% } else { %><h1>页面未找到</h1><div class="content"><p>没有找到这个页面。</p></div><% } %>
+  </article>
+</div>
+<% }) %>
