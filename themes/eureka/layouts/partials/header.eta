@@ -24,7 +24,7 @@
   <button class="nav-toggle md:hidden flex items-center px-3 py-2" type="button" aria-label="展开导航" aria-controls="nav-panel" aria-expanded="false">
     <%~ include('./fontawesome', {icon: 'bars', className: ''}) %>
   </button>
-  <div id="nav-panel" class="nav-panel hidden md:flex md:flex-grow md:justify-between md:items-center w-full md:w-auto text-primary-text z-20">
+  <div id="nav-panel" class="nav-panel md:flex md:flex-grow md:justify-between md:items-center w-full md:w-auto text-primary-text z-20">
     <div class="nav-links md:flex md:h-16 text-sm md:flex-grow pb-4 md:pb-0 border-b md:border-b-0">
       <% firekylin.site.navigation.forEach(nav => { %>
         <a href="<%= nav.url %>" class="block mt-4 md:inline-block md:mt-0 md:h-(16-4px) md:leading-(16-4px) box-border md:border-t-2 md:border-b-2 mr-4 <%= false ? "selected-menu-item" : "border-transparent"%>"><%= nav.label %></a>
@@ -48,4 +48,5 @@
       <a class="icon-button relative pl-4 pt-4 md:pt-0" href="/rss.html" aria-label="RSS"><%~ include('./fontawesome', {icon: 'rss', className: ''}) %></a>
     </div>
   </div>
+  <% /* <div class="fixed inset-0 opacity-0 h-full w-full cursor-default z-0" id="is-open-mobile"></div> */ %>
 </nav>
