@@ -7,7 +7,7 @@
     "build": "node ./scripts/build-static.js"
   },
   "dependencies": {
-    "firekylin": "2.18.1",
+    "firekylin": "2.19.0",
     "firekylin-plugin-comment-import": "1.0.0",
     "firekylin-plugin-friend-links": "1.0.0",
     "firekylin-plugin-markdown-route": "1.0.0",
