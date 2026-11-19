@@ -15,6 +15,22 @@ module.exports = ({Widget}) => class extends Widget {
     const user = await this.model('user').where({id: session.id}).field('id,type,status').find();
     if (!user?.id || Number(user.status) !== 1) { this.push(guest); return }
     const canPublish = Number(session.type) === 1 && Number(user.type) === 1;
-    this.push({loggedIn: true, canPublish, csrf: canPublish ? auth.csrfToken(this.ctx) : ''});
+    const identity = {loggedIn: true, canPublish, csrf: canPublish ? auth.csrfToken(this.ctx) : ''};
+    // Never trust a template parameter as authorization to read private posts.
+    if (canPublish && this.parameter.includeList) {
+      try {
+        const {SayService} = require('firekylin-plugin-say/lib/say-service');
+        const say = new SayService({getModel: name => this.model(name)});
+        const settings = await say.settings();
+        if (settings.enabled) {
+          const items = (await say.all()).filter(item => ['public', 'private'].includes(item.status));
+          const pageSize = 10;
+          const lastPage = Math.max(1, Math.ceil(items.length / pageSize));
+          const page = Math.min(lastPage, Math.max(1, Number.parseInt(this.ctx.query.page, 10) || 1));
+          identity.list = {page, pageSize, total: items.length, items: items.slice((page - 1) * pageSize, page * pageSize)};
+        }
+      } catch { identity.listUnavailable = true; }
+    }
+    this.push(identity);
   }
 };
