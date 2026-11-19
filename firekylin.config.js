@@ -28,18 +28,30 @@ module.exports = {
     "proxy": true
   },
   "database": {
-    "type": FK_DB_MODE,
-    "host": FK_DB_HOST,
-    "database": FK_DB_DATABASE,
-    "user": FK_DB_USER,
-    "password": FK_DB_PASSWORD,
-    "port": FK_DB_PORT,
-    "prefix": FK_DB_PREFIX,
+    "type": "postgresql",
+    "host": POSTGRES_HOST,
+    "database": POSTGRES_DATABASE,
+    "user": POSTGRES_USER,
+    "password": POSTGRES_PASSWORD,
+    "port": "5432",
+    "prefix": "fk_",
     ssl: {
-      minVersion: 'TLSv1.2',
-      rejectUnauthorized: true,
+      rejectUnauthorized: false,
     }
   }
+  // "database": {
+  //   "type": FK_DB_MODE,
+  //   "host": FK_DB_HOST,
+  //   "database": FK_DB_DATABASE,
+  //   "user": FK_DB_USER,
+  //   "password": FK_DB_PASSWORD,
+  //   "port": FK_DB_PORT,
+  //   "prefix": FK_DB_PREFIX,
+  //   ssl: {
+  //     minVersion: 'TLSv1.2',
+  //     rejectUnauthorized: true,
+  //   }
+  // }
 };
 
 // Firekylin marketplace plugin imports (for Vercel bundling)
