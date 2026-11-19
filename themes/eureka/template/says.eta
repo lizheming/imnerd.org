@@ -6,6 +6,7 @@ const session = await firekylin.widget('Widget_Custom_SaySession');
 archive.next();
 const identity = session.stack[0];
 const list = firekylin.plugin?.say?.list;
+const nativeComments = firekylin.plugin?.say?.comments ? await firekylin.plugin.say.comments() : null;
 let unavailable = !list;
 let result = {items: [], page: 1, pageSize: 10, total: 0};
 if (list) {
@@ -75,5 +76,6 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
   <button type="button" data-lightbox-next aria-label="下一张">›</button>
   <p aria-live="polite" data-lightbox-count></p>
 </dialog>
+<% if (nativeComments) { %><script defer src="/api/plugins/say/comment-client.js"></script><% } %>
 <script defer src="<%= site.themeUrl('res/js/says.js') %>"></script>
 <% }) %>

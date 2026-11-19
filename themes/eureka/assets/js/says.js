@@ -89,7 +89,11 @@
     button.addEventListener('click', () => {
       const open = button.getAttribute('aria-expanded') !== 'true';
       button.setAttribute('aria-expanded', String(open)); button.setAttribute('aria-label', open ? '收起评论' : '展开评论'); panel.hidden = !open;
-      if (open && !loaded && !loading) load(1);
+      if (open && window.FirekylinSayComments) {
+        window.FirekylinSayComments.mount(panel, button.dataset.sayId, count => {
+          button.querySelector('[data-comment-count]').textContent = count;
+        });
+      } else if (open && !loaded && !loading) load(1);
     });
   });
 
