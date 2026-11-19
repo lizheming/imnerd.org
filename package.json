@@ -17,5 +17,8 @@
   },
   "overrides": {
     "think-loader": "1.2.4"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
   }
 }

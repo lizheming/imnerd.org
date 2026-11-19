@@ -1,0 +1,79 @@
+<% layout('../layout') %>
+<%
+const archive = await firekylin.widget('Widget_Archive_Eureka', {type: 'page'});
+const site = await firekylin.widget('Widget_Options');
+const session = await firekylin.widget('Widget_Custom_SaySession');
+archive.next();
+const identity = session.stack[0];
+const list = firekylin.plugin?.say?.list;
+let unavailable = !list;
+let result = {items: [], page: 1, pageSize: 10, total: 0};
+if (list) {
+  try {
+    result = await list({page: firekylin.ctx.query.page, pageSize: 10});
+    const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+    if (result.page > lastPage) result = await list({page: lastPage, pageSize: 10});
+  } catch { unavailable = true; }
+}
+const pagination = {currentPage: result.page, totalPages: Math.max(1, Math.ceil(result.total / result.pageSize))};
+const safeUrl = value => { try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
+%>
+<% block('title', () => { %><%= archive.have() ? archive.title() : '微博' %> - <%= site.title() %><% }) %>
+<% block('headers', () => { %>
+<link rel="stylesheet" href="<%= site.themeUrl('res/css/says.css') %>">
+<% if (archive.have()) { %><link rel="canonical" href="<%= site.siteUrl + archive.permalink %>"><% } %>
+<% }) %>
+<% block('content', () => { %>
+<div class="lg:pt-12 says-page page-card" data-says-page>
+  <header class="says-heading">
+    <h1><%= archive.have() ? archive.title() : '微博' %></h1>
+    <% if (identity.loggedIn) { %><a class="says-auth" href="/admin/user/logout">退出</a>
+    <% } else { %><a class="says-auth" href="/admin/login?redirect=%2Fpage%2Fsays.html">登录</a><% } %>
+  </header>
+  <% if (identity.canPublish && !unavailable) { %>
+  <form class="says-composer" data-says-composer data-csrf="<%= identity.csrf %>">
+    <label class="says-sr-only" for="say-content">微博内容</label>
+    <textarea id="say-content" name="text" rows="3" required maxlength="20000" placeholder="有什么新鲜事？"></textarea>
+    <div class="says-composer-actions"><label><input type="checkbox" name="private"> 私密发布</label><button class="says-publish" type="submit">发布</button></div>
+    <p class="says-status" role="status" aria-live="polite" data-publish-status></p>
+  </form>
+  <% } %>
+  <section aria-label="微博列表" class="says-list">
+  <% if (unavailable) { %><p class="says-empty">微博暂时无法加载，请稍后重试。</p>
+  <% } else if (!result.items.length) { %><p class="says-empty">暂无微博，记录第一件新鲜事吧。</p><% } %>
+  <% for (const item of result.items) { %>
+    <article class="says-card" id="say-<%= item.id %>">
+      <% if (item.text) { %><p class="says-text"><%= item.text %></p><% } %>
+      <% if (['image', 'textpic'].includes(item.kind)) { %>
+      <div class="says-images" aria-label="微博图片">
+      <% for (const [index, image] of (item.images || []).entries()) { const url = safeUrl(image); if (!url) continue; %>
+        <a href="<%= url %>" data-says-image><img src="<%= url %>" alt="微博图片 <%= index + 1 %>" loading="lazy" decoding="async"></a>
+      <% } %></div>
+      <% } else if (item.kind === 'voice' && safeUrl(item.mediaUrl)) { %>
+        <audio controls preload="none" src="<%= safeUrl(item.mediaUrl) %>"></audio>
+      <% } else if (['link', 'music'].includes(item.kind) && safeUrl(item.url)) { %>
+        <a class="says-link" href="<%= safeUrl(item.url) %>" target="_blank" rel="noopener noreferrer nofollow">
+        <% if (safeUrl(item.cover)) { %><img src="<%= safeUrl(item.cover) %>" alt="" loading="lazy"><% } %>
+        <span><strong><%= item.title || item.url %></strong><small><%= item.artist || item.description || item.url %></small></span></a>
+      <% } else if (item.kind === 'location') { %><p class="says-location">📍 <%= item.label || `${item.latitude}, ${item.longitude}` %></p><% } %>
+      <footer class="says-meta"><time data-says-time="<%= item.createdAt %>" title="<%= item.createdAt %>"><%= item.createdAt %></time>
+        <button class="says-comment-toggle" type="button" data-say-id="<%= item.id %>" aria-expanded="false" aria-controls="say-comments-<%= item.id %>" aria-label="展开评论">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg>
+          <span data-comment-count><%= item.commentCount || 0 %></span>
+        </button>
+      </footer>
+      <section class="says-comments" id="say-comments-<%= item.id %>" hidden aria-label="微博评论" data-comments-panel></section>
+    </article>
+  <% } %>
+  </section>
+  <%~ include('../inc/pagination', {pagination}) %>
+</div>
+<dialog class="says-lightbox" data-says-lightbox aria-label="图片查看器">
+  <button type="button" class="says-lightbox-close" data-lightbox-close aria-label="关闭图片">×</button>
+  <button type="button" data-lightbox-prev aria-label="上一张">‹</button>
+  <img alt="">
+  <button type="button" data-lightbox-next aria-label="下一张">›</button>
+  <p aria-live="polite" data-lightbox-count></p>
+</dialog>
+<script defer src="<%= site.themeUrl('res/js/says.js') %>"></script>
+<% }) %>
