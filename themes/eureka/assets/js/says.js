@@ -54,6 +54,52 @@
     } finally { button.disabled = false; button.textContent = '发布'; }
   });
 
+  const commentOptions = JSON.parse(root.dataset.walineOptions);
+  const counterURL = commentOptions.serverURL + '/api/article';
+  root.querySelectorAll('[data-like-path]').forEach(button => {
+    // Use the same path as Waline and reserve its first article reaction for likes.
+    const path = encodeURI(button.dataset.likePath);
+    const storageKey = 'says:reaction0:' + path;
+    const status = button.closest('.says-card').querySelector('[data-like-status]');
+    let liked = false;
+    try { liked = localStorage.getItem(storageKey) === '1'; } catch {}
+    const show = count => {
+      button.querySelector('[data-like-count]').textContent = String(Math.max(0, count));
+      button.setAttribute('aria-pressed', String(liked));
+      button.setAttribute('aria-label', liked ? '取消点赞' : '点赞');
+    };
+    async function counter(action) {
+      const query = new URLSearchParams({path, type: 'reaction0'});
+      const response = await fetch(counterURL + (action ? '' : '?' + query), action ? {
+        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path, type: 'reaction0', action})
+      } : {credentials: 'same-origin'});
+      const result = await response.json();
+      const count = result.data?.[0]?.reaction0;
+      if (!response.ok || result.errno !== 0 || !Number.isFinite(count)) throw new Error('counter');
+      return count;
+    }
+    counter().then(count => { show(count); button.disabled = false; }).catch(() => {
+      button.title = '点赞数量暂时无法加载，请刷新后重试';
+    });
+    button.addEventListener('click', async () => {
+      if (button.disabled) return;
+      button.disabled = true;
+      status.textContent = '';
+      try {
+        const count = await counter(liked ? 'desc' : 'inc');
+        liked = !liked;
+        try { localStorage.setItem(storageKey, liked ? '1' : '0'); } catch {}
+        show(count);
+        status.textContent = liked ? '已点赞' : '已取消点赞';
+        button.disabled = false;
+      } catch {
+        status.classList.remove('says-sr-only');
+        status.textContent = '点赞结果未确认，请刷新页面核对后再试。';
+      }
+    });
+  });
+
   const walineMounts = new WeakMap();
   let walineReady;
   function mountWaline(panel, button) {
@@ -73,7 +119,7 @@
         const [client] = await walineReady;
         const options = JSON.parse(root.dataset.walineOptions);
         panel.replaceChildren();
-        client.init({...options, el: panel, path: encodeURI(button.dataset.commentPath)});
+        client.init({...options, reaction: false, el: panel, path: encodeURI(button.dataset.commentPath)});
         const query = new URLSearchParams({type: 'count', url: button.dataset.commentPath});
         fetch('/api/comment/api/comment?' + query, {credentials: 'omit'}).then(r => r.json()).then(result => {
           if (result.errno === 0 && Number.isFinite(result.data?.[0])) {
