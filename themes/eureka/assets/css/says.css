@@ -1,0 +1,44 @@
+.says-page { max-width: 930px; margin: 0 auto 3rem; padding: 3rem 0 0; }
+.says-heading { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin:0 0 1.5rem; }
+.says-heading h1 { font-size:1.875rem; font-weight:700; margin:0; }
+.says-auth { font-size:.9rem; color:var(--color-secondary-text,var(--secondary-text)); }
+.says-composer,.says-card { background:var(--color-secondary-bg,var(--secondary-bg,#fff)); border-radius:.5rem; padding:1.5rem; margin-bottom:1.25rem; }
+.says-composer textarea { width:100%; display:block; resize:vertical; min-height:100px; padding:.8rem; border:1px solid var(--border,#e2e8f0); border-radius:.35rem; background:transparent; color:inherit; font:inherit; outline-offset:3px; }
+.says-composer-actions { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1rem; }
+.says-composer-actions label { display:flex; align-items:center; gap:.45rem; font-size:.9rem; color:var(--color-secondary-text,var(--secondary-text)); }
+.says-composer-actions input { accent-color:var(--eureka,#38b2ac); }
+.says-publish { background:var(--eureka,#38b2ac); color:#fff; border-radius:.3rem; padding:.45rem 1.6rem; cursor:pointer; }
+.says-publish:disabled { opacity:.65; cursor:wait; }
+.says-status { font-size:.875rem; margin-top:.75rem; }
+.says-status:empty { display:none; }
+.says-text { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.85; }
+.says-images { display:flex; gap:.65rem; overflow-x:auto; margin-top:1rem; padding-bottom:.4rem; scrollbar-width:thin; }
+.says-images a { display:block; flex:0 0 160px; height:160px; overflow:hidden; border-radius:.35rem; }
+.says-images img { width:100%; height:100%; object-fit:cover; transition:transform .2s; }
+.says-images a:hover img { transform:scale(1.04); }
+.says-card audio { display:block; max-width:100%; margin-top:1rem; }
+.says-link { display:flex; align-items:center; gap:1rem; margin-top:1rem; padding:1rem; border:1px solid var(--border,#e2e8f0); border-radius:.3rem; overflow-wrap:anywhere; }
+.says-link img { width:64px; height:64px; object-fit:cover; }
+.says-link small { display:block; color:var(--color-secondary-text,var(--secondary-text)); }
+.says-meta { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1.25rem; color:var(--color-tertiary-text,var(--tertiary-text,#777)); font-size:.85rem; }
+.says-comment-toggle { display:flex; align-items:center; gap:.4rem; cursor:pointer; background:none; color:inherit; }
+.says-comment-toggle:hover,.says-comment-toggle[aria-expanded=true] { color:var(--eureka,#38b2ac); }
+.says-comment-toggle svg { width:1.1rem; height:1.1rem; fill:none; stroke:currentColor; stroke-width:1.7; }
+.says-comments { margin-top:1rem; border-top:1px solid var(--border,#e2e8f0); padding-top:1rem; font-size:.9rem; }
+.says-comments[hidden] { display:none; }
+.says-comment { margin-bottom:1rem; }
+.says-comment p { white-space:pre-wrap; overflow-wrap:anywhere; }
+.says-comments a,.says-comments-nav button { color:var(--eureka,#38b2ac); }
+.says-comment-note { font-size:.8rem; margin-top:.7rem; opacity:.7; }
+.says-comments-nav { display:flex; justify-content:space-between; margin-top:.75rem; }
+.says-empty { padding:2rem 1rem; text-align:center; opacity:.65; }
+.says-lightbox { position:fixed; inset:0; width:100vw; height:100dvh; max-width:none; max-height:none; padding:3rem; border:0; background:rgba(0,0,0,.92); color:#fff; }
+.says-lightbox[open] { display:flex; align-items:center; justify-content:center; gap:1rem; }
+.says-lightbox::backdrop { background:rgba(0,0,0,.75); }
+.says-lightbox img { max-width:calc(100% - 6rem); max-height:85vh; object-fit:contain; }
+.says-lightbox button { flex-shrink:0; background:none; color:#fff; font-size:2.5rem; padding:.4rem; cursor:pointer; }
+.says-lightbox button[hidden] { display:none; }
+.says-lightbox-close { position:absolute; right:1rem; top:.5rem; }
+.says-lightbox [data-lightbox-count] { position:absolute; bottom:1rem; left:0; right:0; text-align:center; }
+.says-sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+@media(max-width:640px) { .says-page { padding:1.5rem 1rem 0; } .says-card,.says-composer { padding:1rem; } .says-images a { flex-basis:125px; height:125px; } .says-lightbox { padding:3rem .4rem; gap:.2rem; } .says-lightbox img { max-width:calc(100% - 4rem); } }

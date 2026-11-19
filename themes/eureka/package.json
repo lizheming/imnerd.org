@@ -4,7 +4,7 @@
   "description": "A Firekylin port of the Hugo Eureka theme",
   "license": "Apache-2.0",
   "scripts": {
-    "build": "postcss assets/css/eureka.css -c assets/css/postcss.config.js -o res/css/eureka.css && cp assets/js/eureka.js res/js/eureka.js && cp assets/fontawesome/all.svg res/fontawesome/all.svg"
+    "build": "postcss assets/css/eureka.css -c assets/css/postcss.config.js -o res/css/eureka.css && cp assets/js/eureka.js res/js/eureka.js && cp assets/fontawesome/all.svg res/fontawesome/all.svg && cp assets/js/says.js res/js/says.js && cp assets/css/says.css res/css/says.css"
   },
   "devDependencies": {
     "autoprefixer": "^10.2.5",
