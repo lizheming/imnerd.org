@@ -2,7 +2,7 @@
 <%
 const archive = await firekylin.widget('Widget_Archive_Eureka', {type: 'page'});
 const site = await firekylin.widget('Widget_Options');
-const session = await firekylin.widget('Widget_Custom_SaySession');
+const session = await firekylin.widget('Widget_Custom_SaySession', {includeList: Boolean(firekylin.plugin?.say?.list)});
 archive.next();
 const identity = session.stack[0];
 const list = firekylin.plugin?.say?.list;
@@ -22,9 +22,11 @@ for (const key of ['meta', 'requiredMeta', 'wordLimit', 'emoji', 'reaction', 'im
   'highlighter', 'texRenderer', 'search', 'noCopyright', 'noRss', 'dark', 'commentSorting']) {
   if (commentSettings[key] !== undefined) walineOptions[key] = commentSettings[key];
 }
-let unavailable = !list;
+let unavailable = !list || identity.listUnavailable;
 let result = {items: [], page: 1, pageSize: 10, total: 0};
-if (list) {
+if (identity.canPublish && identity.list) {
+  result = identity.list;
+} else if (list && !unavailable) {
   try {
     result = await list({page: firekylin.ctx.query.page, pageSize: 10});
     const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
@@ -41,7 +43,7 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
 <% if (archive.have()) { %><link rel="canonical" href="<%= site.siteUrl + archive.permalink %>"><% } %>
 <% }) %>
 <% block('content', () => { %>
-<div class="lg:pt-12 says-page page-card" data-says-page data-waline-options="<%= JSON.stringify(walineOptions) %>">
+<div class="lg:pt-12 says-page page-card" data-says-page data-admin-csrf="<%= identity.canPublish ? identity.csrf : '' %>" data-waline-options="<%= JSON.stringify(walineOptions) %>">
   <header class="says-heading">
     <h1><%= archive.have() ? archive.title() : '微博' %></h1>
     <% if (identity.loggedIn) { %><a class="says-auth" href="/admin/user/logout">退出</a>
@@ -59,11 +61,12 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
   <% if (unavailable) { %><p class="says-empty">微博暂时无法加载，请稍后重试。</p>
   <% } else if (!result.items.length) { %><p class="says-empty">暂无微博，记录第一件新鲜事吧。</p><% } %>
   <% for (const item of result.items) {
-    const interactionPath = item.pathname ? `/says/${item.id}?pathname=${encodeURIComponent(item.pathname)}&type=3` : '';
+    const interactionPath = item.status !== 'private' && item.pathname ? `/says/${item.id}?pathname=${encodeURIComponent(item.pathname)}&type=3` : '';
     const canComment = Boolean(interactionPath && item.allowComments);
     const source = ({qq: 'QQ', feishu: '飞书', wechat: '微信', '微信公众号': '微信', wecom: '企业微信'})[String(item.source).toLowerCase()] || item.source || 'Firekylin';
   %>
-    <article class="says-card" id="say-<%= item.id %>">
+    <article class="says-card<%= item.status === 'private' ? ' says-card-private' : '' %>" id="say-<%= item.id %>">
+      <% if (item.status === 'private') { %><span class="says-private-stamp" role="img" aria-label="私密微博，仅管理员可见"></span><% } %>
       <% if (item.text) { %><p class="says-text"><%= item.text %></p><% } %>
       <% if (['image', 'textpic'].includes(item.kind)) { %>
       <div class="says-images" aria-label="微博图片">
@@ -77,8 +80,13 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
         <% if (safeUrl(item.cover)) { %><img src="<%= safeUrl(item.cover) %>" alt="" loading="lazy"><% } %>
         <span><strong><%= item.title || item.url %></strong><small><%= item.artist || item.description || item.url %></small></span></a>
       <% } else if (item.kind === 'location') { %><p class="says-location">📍 <%= item.label || `${item.latitude}, ${item.longitude}` %></p><% } %>
-      <footer class="says-meta"><span class="says-origin"><a href="/says/<%= item.id %>"><time data-says-time="<%= item.createdAt %>" title="<%= item.createdAt %>"><%= item.createdAt %></time></a><span>来自 <%= source %></span></span>
+      <footer class="says-meta"><span class="says-origin"><a href="<%= item.status === 'private' ? `/admin/plugins/say/edit?id=${item.id}` : `/says/${item.id}` %>"><time data-says-time="<%= item.createdAt %>" title="<%= item.createdAt %>"><%= item.createdAt %></time></a><span>来自 <%= source %></span></span>
         <span class="says-actions">
+        <% if (identity.canPublish) { %>
+        <button class="says-manage" type="button" data-say-action="edit" data-id="<%= item.id %>" title="编辑正文" aria-label="编辑正文"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5L8 21H3v-5Z M14 5l5 5"/></svg></button>
+        <button class="says-manage" type="button" data-say-action="visibility" data-id="<%= item.id %>" data-value="<%= item.status === 'private' ? 'public' : 'private' %>" title="<%= item.status === 'private' ? '设为公开' : '设为私密' %>" aria-label="<%= item.status === 'private' ? '设为公开' : '设为私密' %>"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0<%= item.status === 'private' ? 'v4' : '' %> M12 14v3"/></svg></button>
+        <button class="says-manage" type="button" data-say-action="comments" data-id="<%= item.id %>" data-value="<%= item.allowComments ? 'false' : 'true' %>" title="<%= item.allowComments ? '禁止评论' : '允许评论' %>" aria-label="<%= item.allowComments ? '禁止评论' : '允许评论' %>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11a8 8 0 0 1-8 8H7l-4 3V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z <%= item.allowComments ? 'M4 3l16 18' : 'M8 11h8 M12 7v8' %>"/></svg></button>
+        <% } %>
         <% if (interactionPath) { %>
         <button class="says-like-toggle" type="button" data-like-path="<%= interactionPath %>" aria-pressed="false" aria-label="点赞" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>
@@ -93,6 +101,7 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
         <% } %>
         </span>
       </footer>
+      <p class="says-status" role="status" data-manage-status></p>
       <p class="says-sr-only" role="status" data-like-status></p>
       <% if (canComment) { %>
       <section class="says-comments" id="say-comments-<%= item.id %>" hidden aria-label="微博评论" data-comments-panel></section>
@@ -102,6 +111,16 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
   </section>
   <%~ include('../inc/pagination', {pagination}) %>
 </div>
+<% if (identity.canPublish) { %>
+<dialog class="says-editor" data-says-editor aria-labelledby="says-editor-title">
+  <form data-says-edit-form><h2 id="says-editor-title">编辑微博正文</h2>
+    <p>保留现有图片、音频及其他附件。</p>
+    <label class="says-sr-only" for="says-edit-text">正文</label><textarea id="says-edit-text" name="text" rows="6" maxlength="20000"></textarea>
+    <p class="says-status" role="status" data-edit-status></p>
+    <div class="says-composer-actions"><button type="button" data-edit-cancel>取消</button><button type="submit" class="says-publish">保存修改</button></div>
+  </form>
+</dialog>
+<% } %>
 <dialog class="says-lightbox" data-says-lightbox aria-label="图片查看器">
   <button type="button" class="says-lightbox-close" data-lightbox-close aria-label="关闭图片">×</button>
   <button type="button" data-lightbox-prev aria-label="上一张">‹</button>
