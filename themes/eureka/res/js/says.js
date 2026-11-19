@@ -54,42 +54,57 @@
     } finally { button.disabled = false; button.textContent = '发布'; }
   });
 
+  const walineMounts = new WeakMap();
+  let walineReady;
+  function mountWaline(panel, button) {
+    if (walineMounts.has(panel)) return walineMounts.get(panel);
+    const pending = (async () => {
+      panel.textContent = '评论加载中…';
+      try {
+        if (!walineReady) walineReady = Promise.all([
+          import('https://cdn.jsdelivr.net/npm/@waline/client@3.16.0/dist/waline.js'),
+          fetch('/api/comment/api/token', {credentials: 'same-origin'}).then(async response => {
+            const result = await response.json();
+            if (!response.ok || result.errno !== 0) throw new Error('session');
+            if (result.data?.objectId) localStorage.setItem('WALINE_USER', JSON.stringify({...result.data, remember: true}));
+            else localStorage.removeItem('WALINE_USER');
+          })
+        ]).catch(error => { walineReady = null; throw error; });
+        const [client] = await walineReady;
+        const options = JSON.parse(root.dataset.walineOptions);
+        panel.replaceChildren();
+        client.init({...options, el: panel, path: encodeURI(button.dataset.commentPath)});
+        const query = new URLSearchParams({type: 'count', url: button.dataset.commentPath});
+        fetch('/api/comment/api/comment?' + query, {credentials: 'omit'}).then(r => r.json()).then(result => {
+          if (result.errno === 0 && Number.isFinite(result.data?.[0])) {
+            button.querySelector('[data-comment-count]').textContent = result.data[0];
+          }
+        }).catch(() => {});
+      } catch {
+        panel.textContent = '评论暂时无法加载，请收起后重新展开重试。';
+        walineMounts.delete(panel);
+      }
+    })();
+    walineMounts.set(panel, pending);
+    return pending;
+  }
+
   root.querySelectorAll('[data-say-id]').forEach(button => {
     const panel = document.getElementById(button.getAttribute('aria-controls'));
-    let loaded = false, loading = false;
-    const text = (tag, value, className) => { const el = document.createElement(tag); el.textContent = value; if (className) el.className = className; return el; };
-    async function load(page) {
-      loading = true; panel.replaceChildren(text('p', '评论加载中…'));
-      try {
-        const response = await fetch('/api/plugins/say/comments/' + encodeURIComponent(button.dataset.sayId) + '?page=' + page, {credentials: 'same-origin'});
-        const payload = await response.json();
-        if (!response.ok || !payload.success) {
-          if ([403, 404].includes(response.status)) { panel.replaceChildren(text('p', '这条微博的评论尚未开放。')); loaded = true; return; }
-          throw new Error('load');
-        }
-        panel.replaceChildren();
-        button.querySelector('[data-comment-count]').textContent = payload.data.total;
-        for (const comment of payload.data.items) {
-          const item = document.createElement('div'); item.className = 'says-comment';
-          item.append(text('strong', comment.nick), text('p', comment.comment)); panel.appendChild(item);
-        }
-        if (!payload.data.items.length) panel.appendChild(text('p', '暂无评论。'));
-        const link = document.createElement('a'); link.href = '/says/' + encodeURIComponent(button.dataset.sayId); link.textContent = '前往详情页参与评论';
-        panel.appendChild(link);
-        const note = text('p', '评论审核通过后展示。', 'says-comment-note'); panel.appendChild(note);
-        const navigation = document.createElement('div'); navigation.className = 'says-comments-nav';
-        for (const [label, next, show] of [['上一页评论', page - 1, page > 1], ['下一页评论', page + 1, page * payload.data.pageSize < payload.data.total]]) {
-          if (!show) continue;
-          const control = text('button', label); control.type = 'button'; control.addEventListener('click', () => { if (!loading) load(next); }); navigation.appendChild(control);
-        }
-        panel.appendChild(navigation); loaded = true;
-      } catch { panel.replaceChildren(text('p', '评论暂时无法加载，请收起后重新展开重试。')); }
-      finally { loading = false; }
-    }
     button.addEventListener('click', () => {
       const open = button.getAttribute('aria-expanded') !== 'true';
-      button.setAttribute('aria-expanded', String(open)); button.setAttribute('aria-label', open ? '收起评论' : '展开评论'); panel.hidden = !open;
-      if (open && !loaded && !loading) load(1);
+      button.setAttribute('aria-expanded', String(open));
+      button.setAttribute('aria-label', open ? '收起评论' : '展开评论');
+      panel.hidden = !open;
+      if (!open) return;
+      if (button.dataset.commentPath) {
+        mountWaline(panel, button);
+      } else {
+        const link = document.createElement('a');
+        link.href = '/says/' + encodeURIComponent(button.dataset.sayId);
+        link.textContent = '前往详情页查看评论';
+        panel.replaceChildren(link);
+      }
     });
   });
 
