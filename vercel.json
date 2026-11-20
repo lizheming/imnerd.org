@@ -46,6 +46,13 @@
       "handle": "filesystem"
     },
     {
+      "src": "^/index[.]xml$",
+      "status": 301,
+      "headers": {
+        "Location": "/rss.xml"
+      }
+    },
+    {
       "src": "/(.*)",
       "dest": "/main.js"
     }
