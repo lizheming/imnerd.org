@@ -21,7 +21,40 @@
     const target = pathname + search + '#' + anchor;
     return '/admin/login?' + new URLSearchParams({redirect: target});
   }
-  if (typeof module !== 'undefined' && module.exports) module.exports = {parseTime, relativeTime, commentLoginUrl};
+  function commentDraftStore(storage) {
+    const prefix = 'says:comment-draft:';
+    const latestKey = prefix + 'last';
+    const fallback = new Map();
+    function get(key) {
+      if (fallback.has(key)) return fallback.get(key);
+      try { return storage().getItem(key); } catch { return null; }
+    }
+    function put(key, value) {
+      try {
+        if (value) storage().setItem(key, value);
+        else storage().removeItem(key);
+        fallback.delete(key);
+      } catch { fallback.set(key, value || null); }
+    }
+    function read(anchor) { return get(prefix + anchor) || ''; }
+    function write(anchor, text) {
+      put(prefix + anchor, text);
+      if (text.trim()) put(latestKey, anchor);
+      else if (get(latestKey) === anchor) put(latestKey, null);
+    }
+    return {
+      read, write,
+      clear(anchor, submitted) {
+        // Another tab may have changed this draft during the request.
+        if (read(anchor) === submitted) write(anchor, '');
+      },
+      latest() {
+        const anchor = get(latestKey);
+        return anchor && read(anchor).trim() ? anchor : null;
+      }
+    };
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = {parseTime, relativeTime, commentLoginUrl, commentDraftStore};
   if (typeof document === 'undefined') return;
   const root = document.querySelector('[data-says-page]');
   if (!root) return;
@@ -179,15 +212,19 @@
   });
 
   const panels = [...root.querySelectorAll('[data-comments-panel]')];
+  const drafts = commentDraftStore(() => window.localStorage);
+  const initialAnchor = location.hash ? location.hash.slice(1) : drafts.latest();
   let signedIn = false, sessionRequest;
+  function updateSubmit(composer) {
+    const reply = composer.hasAttribute('data-replying');
+    const button = composer.querySelector('[type=submit]');
+    button.textContent = signedIn ? reply ? '回复' : '评论' : '登录后评论';
+    if (signedIn) button.setAttribute('aria-keyshortcuts', 'Control+Enter');
+    else button.removeAttribute('aria-keyshortcuts');
+  }
   function setSignedIn(value) {
     signedIn = value;
-    for (const panel of panels) {
-      const composer = panel.querySelector('[data-comment-form]');
-      const replying = composer.hasAttribute('data-replying');
-      composer.elements.comment.readOnly = !signedIn;
-      composer.querySelector('[type=submit]').textContent = signedIn ? replying ? '回复' : '评论' : '登录后评论';
-    }
+    for (const panel of panels) updateSubmit(panel.querySelector('[data-comment-form]'));
   }
   function checkSession() {
     if (!sessionRequest) {
@@ -200,13 +237,7 @@
     }
     return sessionRequest;
   }
-  if (panels.length) {
-    checkSession().catch(() => {});
-    document.addEventListener('pointerdown', event => {
-      const row = root.querySelector('[data-comment-active]');
-      if (row && !row.contains(event.target)) row.removeAttribute('data-comment-active');
-    });
-  }
+  if (panels.length) checkSession().catch(() => {});
 
   async function refreshThread(card, panel, toggle) {
     const id = card.id.slice(4);
@@ -238,26 +269,26 @@
     const submit = composer.querySelector('[type=submit]');
     const caption = composer.querySelector('[data-comment-reply-caption]');
     const status = panel.querySelector('[data-comment-status]');
-    const drafts = new Map();
-    let active, busy = false, uncertain = false;
+    let active, busy = false, uncertain = false, shortcut = false;
 
-    function closeComposer({discard = false, focus = false} = {}) {
+    function closeComposer({focus = false} = {}) {
       if (!active) return;
-      const {key, button} = active;
-      if (discard) drafts.delete(key);
-      else drafts.set(key, textarea.value);
+      const {button} = active;
       button.setAttribute('aria-expanded', 'false');
       composer.hidden = true;
       home.appendChild(composer);
       active = null;
       if (focus) button.focus();
     }
-    function openComposer(button, row, focus = true) {
+    function openComposer(button, row, {focus = true, toggle = false} = {}) {
       if (busy) return;
-      if (active?.button === button) { closeComposer({focus}); return; }
+      if (active?.button === button) {
+        if (toggle) closeComposer({focus});
+        else if (focus) textarea.focus();
+        return;
+      }
       closeComposer();
-      const key = row?.dataset.commentId || '';
-      active = {key, row, button};
+      active = {anchor: row?.id || card.id, row, button};
       button.setAttribute('aria-expanded', 'true');
       if (row) row.nextElementSibling.appendChild(composer);
       composer.toggleAttribute('data-replying', Boolean(row));
@@ -266,61 +297,80 @@
       caption.querySelector('[data-comment-addressee]').textContent = row ? '回复 @' + nick : '';
       textarea.setAttribute('aria-label', row ? '回复 ' + nick : '评论');
       textarea.placeholder = row ? '写下你的回复…' : '写下你的评论…';
-      textarea.value = drafts.get(key) || '';
-      submit.textContent = signedIn ? row ? '回复' : '评论' : '登录后评论';
+      textarea.value = drafts.read(active.anchor);
+      updateSubmit(composer);
       composer.hidden = false;
       if (!uncertain) status.textContent = '';
-      if (focus) (signedIn ? textarea : submit).focus();
+      if (focus) textarea.focus();
     }
 
-    toggle.addEventListener('click', () => openComposer(toggle));
+    toggle.addEventListener('click', () => openComposer(toggle, null, {toggle: true}));
     panel.addEventListener('click', event => {
-      const reply = event.target.closest('[data-comment-reply]');
       const row = event.target.closest('[data-comment-row]');
       if (!row) return;
-      panel.querySelector('[data-comment-active]')?.removeAttribute('data-comment-active');
-      row.setAttribute('data-comment-active', '');
-      if (reply) openComposer(reply, row);
+      const reply = row.querySelector('[data-comment-reply]');
+      if (!reply) return;
+      if (event.target.closest('[data-comment-reply]') === reply) {
+        openComposer(reply, row, {toggle: true});
+      } else if (!event.target.closest('a,button,input,textarea,select,label,summary,[contenteditable],[role=button],[role=link]') &&
+        window.getSelection()?.isCollapsed !== false) {
+        openComposer(reply, row);
+      }
+    });
+    textarea.addEventListener('input', () => {
+      if (active) drafts.write(active.anchor, textarea.value);
     });
     composer.querySelector('[data-comment-cancel]').addEventListener('click', () => {
       if (!busy) closeComposer({focus: true});
     });
     composer.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && !busy) { event.preventDefault(); closeComposer({focus: true}); }
+      if (event.key === 'Escape' && !busy) { event.preventDefault(); closeComposer({focus: true}); return; }
+      if (event.target !== textarea || event.key !== 'Enter' || !event.ctrlKey ||
+          event.altKey || event.metaKey || event.shiftKey || event.isComposing || event.keyCode === 229 || !signedIn) return;
+      event.preventDefault();
+      if (event.repeat || busy || uncertain) return;
+      shortcut = true;
+      try { composer.requestSubmit(submit); } finally { shortcut = false; }
     });
-    if (location.hash === '#' + card.id) {
-      openComposer(toggle, null, false);
-    } else if (location.hash.startsWith('#' + card.id + '-comment-')) {
-      const row = document.getElementById(location.hash.slice(1));
+    if (initialAnchor === card.id) {
+      openComposer(toggle, null, {focus: false});
+    } else if (initialAnchor?.startsWith(card.id + '-comment-')) {
+      const row = document.getElementById(initialAnchor);
       if (row?.matches('[data-comment-row]') && panel.contains(row)) {
-        openComposer(row.querySelector('[data-comment-reply]'), row, false);
+        openComposer(row.querySelector('[data-comment-reply]'), row, {focus: false});
       }
     }
 
     composer.addEventListener('submit', async event => {
       event.preventDefault();
       if (!active || busy || uncertain) return;
+      const fromShortcut = shortcut;
+      const {anchor, row} = active;
+      const rawComment = textarea.value;
       busy = true;
       submit.disabled = true;
+      textarea.readOnly = true;
       status.textContent = '';
       let sent = false;
       try {
         if (!await checkSession()) {
-          location.assign(commentLoginUrl(location.pathname, location.search, active.row?.id || card.id));
+          if (fromShortcut) status.textContent = '登录已失效，请点击「登录后评论」继续。';
+          else location.assign(commentLoginUrl(location.pathname, location.search, anchor));
           return;
         }
-        const comment = textarea.value.trim();
+        const comment = rawComment.trim();
         if (!comment) { status.textContent = '请输入评论内容。'; textarea.focus(); return; }
         const data = {comment, url: panel.dataset.commentPath};
-        if (active.row) {
-          data.pid = active.row.dataset.commentId;
-          data.rid = active.row.dataset.commentRoot;
+        if (row) {
+          data.pid = row.dataset.commentId;
+          data.rid = row.dataset.commentRoot;
         }
         sent = true;
         const saved = await walineRequest('comment', data);
         if (!saved?.objectId) throw new Error('comment');
         const approved = saved.status === 'approved';
-        closeComposer({discard: true});
+        drafts.clear(anchor, rawComment);
+        closeComposer();
         toggle.focus();
         status.textContent = approved ? '评论已发表。' : '评论已提交，审核通过后显示。';
         try {
@@ -341,6 +391,7 @@
         }
       } finally {
         busy = false;
+        textarea.readOnly = false;
         submit.disabled = uncertain;
       }
     });
