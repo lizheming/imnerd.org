@@ -1,27 +1,21 @@
-<% layout('../layout') %>
 <%
+const refreshId = firekylin.ctx.get('X-Eureka-Say-Comments');
+const list = firekylin.plugin?.say?.list;
+if (/^[1-9]\d{0,15}$/.test(refreshId)) {
+  firekylin.ctx.set('Cache-Control', 'private, no-store');
+  firekylin.ctx.vary('X-Eureka-Say-Comments');
+  if (list) {
+    const widget = await firekylin.widget('Widget_Eureka_SayComments', {refreshId});
+    const thread = widget.row.entries[refreshId]?.thread;
+    if (thread) { %><%~ include('../inc/say-comment-thread', {sayId: refreshId, thread}) %><% }
+  }
+} else {
+layout('../layout');
 const archive = await firekylin.widget('Widget_Archive_Eureka', {type: 'page'});
 const site = await firekylin.widget('Widget_Options');
 const session = await firekylin.widget('Widget_Custom_SaySession', {includeList: Boolean(firekylin.plugin?.say?.list)});
 archive.next();
 const identity = session.stack[0];
-const list = firekylin.plugin?.say?.list;
-const commentSettings = site.row.comment || {};
-let captcha = site.row.captcha || {};
-try { if (typeof captcha === 'string') captcha = JSON.parse(captcha); } catch { captcha = {}; }
-const captchaEnabled = Array.isArray(captcha.areas) && captcha.areas.includes('comment');
-const walineOptions = {
-  serverURL: `${firekylin.ctx.protocol}://${firekylin.ctx.host}/api/comment`,
-  login: commentSettings.forceLogin ? 'force' : 'enable',
-  lang: commentSettings.locale && commentSettings.locale !== 'auto' ? commentSettings.locale : 'zh-CN',
-  pageSize: Number(commentSettings.pageSize) || 10,
-  turnstileKey: captchaEnabled && captcha.provider === 'turnstile' ? captcha.siteKey : '',
-  recaptchaV3Key: captchaEnabled && captcha.provider === 'recaptcha-v3' ? captcha.siteKey : ''
-};
-for (const key of ['meta', 'requiredMeta', 'wordLimit', 'emoji', 'reaction', 'imageUploader',
-  'highlighter', 'texRenderer', 'search', 'noCopyright', 'noRss', 'dark', 'commentSorting']) {
-  if (commentSettings[key] !== undefined) walineOptions[key] = commentSettings[key];
-}
 let unavailable = !list || identity.listUnavailable;
 let result = {items: [], page: 1, pageSize: 10, total: 0};
 if (identity.canPublish && identity.list) {
@@ -33,21 +27,25 @@ if (identity.canPublish && identity.list) {
     if (result.page > lastPage) result = await list({page: lastPage, pageSize: 10});
   } catch { unavailable = true; }
 }
+const publicItems = result.items.filter(item => item.status === 'public')
+  .map(({id, pathname, status, allowComments}) => ({id, pathname, status, allowComments}));
+const interactions = await firekylin.widget('Widget_Eureka_SayComments', {items: publicItems});
+const returnPath = firekylin.ctx.state.originalPermalink || firekylin.ctx.url;
+const loginTarget = /^\/(?![/\\])/.test(returnPath) ? returnPath : '/';
 const pagination = {currentPage: result.page, totalPages: Math.max(1, Math.ceil(result.total / result.pageSize))};
 const safeUrl = value => { try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : ''; } catch { return ''; } };
 %>
 <% block('title', () => { %><%= archive.have() ? archive.title() : '微博' %> - <%= site.title() %><% }) %>
 <% block('headers', () => { %>
 <link rel="stylesheet" href="<%= site.themeUrl('res/css/says.css') %>">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@waline/client@3.16.0/dist/waline.css">
 <% if (archive.have()) { %><link rel="canonical" href="<%= site.siteUrl + archive.permalink %>"><% } %>
 <% }) %>
 <% block('content', () => { %>
-<div class="lg:pt-12 says-page page-card" data-says-page data-admin-csrf="<%= identity.canPublish ? identity.csrf : '' %>" data-waline-options="<%= JSON.stringify(walineOptions) %>">
+<div class="lg:pt-12 says-page page-card" data-says-page data-admin-csrf="<%= identity.canPublish ? identity.csrf : '' %>">
   <header class="says-heading">
     <h1><%= archive.have() ? archive.title() : '微博' %></h1>
     <% if (identity.loggedIn) { %><a class="says-auth" href="/admin/user/logout">退出</a>
-    <% } else { %><a class="says-auth" href="/admin/login?redirect=%2Fpage%2Fsays.html">登录</a><% } %>
+    <% } else { %><a class="says-auth" href="/admin/login?redirect=<%= encodeURIComponent(loginTarget) %>">登录</a><% } %>
   </header>
   <% if (identity.canPublish && !unavailable) { %>
   <form class="says-composer" data-says-composer data-csrf="<%= identity.csrf %>">
@@ -61,8 +59,8 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
   <% if (unavailable) { %><p class="says-empty">微博暂时无法加载，请稍后重试。</p>
   <% } else if (!result.items.length) { %><p class="says-empty">暂无微博，记录第一件新鲜事吧。</p><% } %>
   <% for (const item of result.items) {
-    const interactionPath = item.status !== 'private' && item.pathname ? `/says/${item.id}?pathname=${encodeURIComponent(item.pathname)}&type=3` : '';
-    const canComment = Boolean(interactionPath && item.allowComments);
+    const interaction = interactions.row.entries[item.id];
+    const canComment = Boolean(interaction?.thread);
     const source = ({qq: 'QQ', feishu: '飞书', wechat: '微信', '微信公众号': '微信', wecom: '企业微信'})[String(item.source).toLowerCase()] || item.source || 'Firekylin';
   %>
     <article class="says-card<%= item.status === 'private' ? ' says-card-private' : '' %>" id="say-<%= item.id %>">
@@ -87,16 +85,16 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
         <button class="says-manage" type="button" data-say-action="visibility" data-id="<%= item.id %>" data-value="<%= item.status === 'private' ? 'public' : 'private' %>" title="<%= item.status === 'private' ? '设为公开' : '设为私密' %>" aria-label="<%= item.status === 'private' ? '设为公开' : '设为私密' %>"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0<%= item.status === 'private' ? 'v4' : '' %> M12 14v3"/></svg></button>
         <button class="says-manage" type="button" data-say-action="comments" data-id="<%= item.id %>" data-value="<%= item.allowComments ? 'false' : 'true' %>" title="<%= item.allowComments ? '禁止评论' : '允许评论' %>" aria-label="<%= item.allowComments ? '禁止评论' : '允许评论' %>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11a8 8 0 0 1-8 8H7l-4 3V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z <%= item.allowComments ? 'M4 3l16 18' : 'M8 11h8 M12 7v8' %>"/></svg></button>
         <% } %>
-        <% if (interactionPath) { %>
-        <button class="says-like-toggle" type="button" data-like-path="<%= interactionPath %>" aria-pressed="false" aria-label="点赞" disabled>
+        <% if (interaction) { %>
+        <button class="says-like-toggle" type="button" data-like-path="<%= interaction.path %>" aria-pressed="false" aria-label="点赞" disabled>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>
-          <span data-like-count>–</span>
+          <span data-like-count><%= interaction.likes ?? '–' %></span>
         </button>
         <% } %>
         <% if (canComment) { %>
-        <button class="says-comment-toggle" type="button" data-say-id="<%= item.id %>" data-comment-path="<%= interactionPath %>" aria-expanded="false" aria-controls="say-comments-<%= item.id %>" aria-label="展开评论">
+        <button class="says-comment-toggle" type="button" data-comment-toggle aria-expanded="false" aria-controls="say-comment-form-<%= item.id %>" aria-label="发表评论">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg>
-          <span data-comment-count><%= item.commentCount || 0 %></span>
+          <span data-comment-count><%= interaction.thread.count %></span>
         </button>
         <% } %>
         </span>
@@ -104,7 +102,24 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
       <p class="says-status" role="status" data-manage-status></p>
       <p class="says-sr-only" role="status" data-like-status></p>
       <% if (canComment) { %>
-      <section class="says-comments" id="say-comments-<%= item.id %>" hidden aria-label="微博评论" data-comments-panel></section>
+      <section class="says-comments" aria-label="微博评论" data-comments-panel data-comment-path="<%= interaction.path %>">
+        <%~ include('../inc/say-comment-thread', {sayId: item.id, thread: interaction.thread}) %>
+        <div data-comment-compose-home>
+          <form class="says-comment-form" id="say-comment-form-<%= item.id %>" data-comment-form hidden>
+            <div class="says-reply-caption" data-comment-reply-caption hidden>
+              <label for="say-comment-text-<%= item.id %>" data-comment-addressee></label>
+              <button type="button" data-comment-cancel>取消</button>
+            </div>
+            <div class="says-comment-input">
+              <textarea id="say-comment-text-<%= item.id %>" name="comment" rows="1" aria-label="评论" placeholder="写下你的评论…" readonly></textarea>
+              <button type="submit">登录后评论</button>
+            </div>
+          </form>
+        </div>
+        <p class="says-status" role="status" data-comment-status></p>
+      </section>
+      <% } else if (interaction && item.allowComments && interactions.row.commentsUnavailable) { %>
+      <p class="says-status">评论暂时无法加载。<a href="/says/<%= item.id %>">前往详情</a></p>
       <% } %>
     </article>
   <% } %>
@@ -130,3 +145,4 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
 </dialog>
 <script defer src="<%= site.themeUrl('res/js/says.js') %>"></script>
 <% }) %>
+<% } %>

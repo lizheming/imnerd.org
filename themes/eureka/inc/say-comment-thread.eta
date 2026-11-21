@@ -1,0 +1,20 @@
+<%
+const {sayId, thread} = firekylin;
+const commentTime = new Intl.DateTimeFormat('zh-CN', {timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+%>
+<div data-say-comment-list="<%= sayId %>" data-count="<%= thread.count %>"<% if (!thread.roots.length) { %> hidden<% } %>>
+  <ol class="says-comment-list" role="list">
+  <% for (const root of thread.roots) { %>
+    <li>
+      <%~ include('./say-comment-row', {comment: root, sayId, commentTime}) %>
+      <% if (root.children.length) { %>
+      <ol class="says-comment-children" role="list">
+      <% for (const comment of root.children) { %>
+        <li><%~ include('./say-comment-row', {comment, sayId, commentTime}) %></li>
+      <% } %>
+      </ol>
+      <% } %>
+    </li>
+  <% } %>
+  </ol>
+</div>

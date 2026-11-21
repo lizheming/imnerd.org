@@ -18,5 +18,8 @@ module.exports = function () {
     }
   }
 
-  return {Widget_Archive_Eureka: EurekaArchive};
+  return {
+    Widget_Archive_Eureka: EurekaArchive,
+    Widget_Eureka_SayComments: require('./say-comments')
+  };
 };
