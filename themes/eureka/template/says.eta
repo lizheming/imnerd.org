@@ -111,7 +111,7 @@ const safeUrl = value => { try { const url = new URL(value); return ['http:', 'h
               <button type="button" data-comment-cancel>取消</button>
             </div>
             <div class="says-comment-input">
-              <textarea id="say-comment-text-<%= item.id %>" name="comment" rows="1" aria-label="评论" placeholder="写下你的评论…" readonly></textarea>
+              <textarea id="say-comment-text-<%= item.id %>" name="comment" rows="1" aria-label="评论" placeholder="写下你的评论…"></textarea>
               <button type="submit">登录后评论</button>
             </div>
           </form>

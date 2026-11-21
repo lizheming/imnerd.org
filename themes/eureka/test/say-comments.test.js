@@ -147,3 +147,49 @@ test('login return preserves the current page, query and exact Say or reply anch
     assert.equal(url.searchParams.get('redirect'), '/digu.html?page=3&from=%E9%B9%BF#' + anchor);
   }
 });
+
+test('drafts persist verbatim across page loads and are isolated by card and exact reply', () => {
+  const {commentDraftStore} = require('../assets/js/says.js');
+  const values = new Map();
+  const storage = () => ({
+    getItem: key => values.get(key),
+    setItem: (key, value) => values.set(key, value),
+    removeItem: key => values.delete(key)
+  });
+  const firstPage = commentDraftStore(storage);
+  firstPage.write('say-7', '  顶层\n带换行  ');
+  firstPage.write('say-10', '另一条碎语');
+  firstPage.write('say-7-comment-6', '回复楼主');
+  firstPage.write('say-7-comment-8', '回复子评论');
+  const nextPage = commentDraftStore(storage);
+  assert.equal(nextPage.latest(), 'say-7-comment-8');
+  assert.equal(nextPage.read('say-7'), '  顶层\n带换行  ');
+  assert.equal(nextPage.read('say-10'), '另一条碎语');
+  assert.equal(nextPage.read('say-7-comment-6'), '回复楼主');
+
+  // A successful submission clears only the exact draft that was submitted.
+  nextPage.clear('say-7-comment-8', '回复子评论');
+  assert.equal(firstPage.read('say-7-comment-8'), '');
+  assert.equal(firstPage.read('say-7-comment-6'), '回复楼主');
+  assert.equal(firstPage.read('say-7'), '  顶层\n带换行  ');
+  assert.equal(nextPage.latest(), null);
+
+  // An older request must not erase text another tab saved later.
+  firstPage.write('say-7', '另一标签页新输入');
+  nextPage.clear('say-7', '  顶层\n带换行  ');
+  assert.equal(nextPage.read('say-7'), '另一标签页新输入');
+  nextPage.write('say-7', '');
+  assert.equal(firstPage.read('say-7'), '');
+  assert.equal(firstPage.latest(), null);
+});
+
+test('a blocked storage backend still keeps the current page usable', () => {
+  const {commentDraftStore} = require('../assets/js/says.js');
+  const drafts = commentDraftStore(() => { throw Error('localStorage is disabled'); });
+  drafts.write('say-7', '本页草稿');
+  assert.equal(drafts.read('say-7'), '本页草稿');
+  assert.equal(drafts.latest(), 'say-7');
+  drafts.clear('say-7', '本页草稿');
+  assert.equal(drafts.read('say-7'), '');
+  assert.equal(drafts.latest(), null);
+});
