@@ -15,3 +15,11 @@
 在 Firekylin 后台的“主题”页面启用 `eureka` 即可。
 
 原主题采用 Apache License 2.0，本移植保留相同许可证。
+
+### 碎语轻评论
+
+自定义页面 `template/says.eta` 通过主题 Widget 读取公开评论、评论数和点赞数，页面地址由 Firekylin 的自定义页面规则决定。评论正文以纯文本展示，回复按 Waline 的楼主和被回复者关系排列。其他页面的 Waline 客户端不受影响。
+
+浏览器只在需要时使用 Firekylin 原生接口检查会话、发表或回复、点赞。评论继续遵循 Say 的审核规则，待审核评论不会进入公开列表。发表后只更新同一张卡片的评论和计数，不修改页面永久链接。
+
+在站点项目根目录执行 `node --test themes/eureka/test/say-comments.test.js` 验证 Widget 和 Eta 输出；修改 `assets` 中的脚本或样式时，记得同步 `res`。

@@ -1,0 +1,15 @@
+<%
+const {comment, sayId} = firekylin;
+const date = comment.time ? new Date(comment.time) : null;
+const stamp = date && Number.isFinite(date.getTime()) ? date.toISOString() : '';
+%>
+<div class="says-comment-row" id="say-<%= sayId %>-comment-<%= comment.id %>" data-comment-row data-comment-id="<%= comment.id %>" data-comment-root="<%= comment.rootId %>" data-comment-nick="<%= comment.nick %>">
+  <p class="says-comment-text"><strong><%= comment.nick %></strong><% if (comment.replyTo) { %><span class="says-comment-address"> 回复 <%= comment.replyTo %></span><% } %>：<span><%= comment.text %></span></p>
+  <span class="says-comment-tools">
+    <% if (stamp) { %><time datetime="<%= stamp %>" title="<%= stamp %>"><%= firekylin.commentTime.format(date) %></time><% } %>
+    <button type="button" data-comment-reply aria-label="回复 <%= comment.nick %>" aria-expanded="false" aria-controls="say-comment-form-<%= sayId %>">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-6 6 6 6M4 11h10a6 6 0 0 1 6 6v3"/></svg>
+    </button>
+  </span>
+</div>
+<div class="says-reply-slot" data-reply-slot></div>

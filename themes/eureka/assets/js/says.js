@@ -17,7 +17,11 @@
     if (seconds < 604800) return Math.floor(seconds / 86400) + '天前';
     return d.month + '月' + d.day + '日';
   }
-  if (typeof module !== 'undefined' && module.exports) module.exports = {parseTime, relativeTime};
+  function commentLoginUrl(pathname, search, anchor) {
+    const target = pathname + search + '#' + anchor;
+    return '/admin/login?' + new URLSearchParams({redirect: target});
+  }
+  if (typeof module !== 'undefined' && module.exports) module.exports = {parseTime, relativeTime, commentLoginUrl};
   if (typeof document === 'undefined') return;
   const root = document.querySelector('[data-says-page]');
   if (!root) return;
@@ -123,43 +127,48 @@
     } catch (error) { status.textContent = errorText(error); }
   });
 
-  const commentOptions = JSON.parse(root.dataset.walineOptions);
-  const counterURL = commentOptions.serverURL + '/api/article';
+  const commentAPI = '/api/comment/api';
+  async function walineRequest(resource, data) {
+    const response = await fetch(commentAPI + '/' + resource, {
+      credentials: 'same-origin', cache: 'no-store', redirect: 'error',
+      signal: AbortSignal.timeout(15000),
+      ...(data ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)} : {})
+    });
+    const result = await response.json();
+    if (!response.ok || result.errno !== 0) {
+      throw Object.assign(new Error('Waline request failed'), {status: response.status, code: result.errno});
+    }
+    return result.data;
+  }
+
   root.querySelectorAll('[data-like-path]').forEach(button => {
-    // Use the same path as Waline and reserve its first article reaction for likes.
-    const path = encodeURI(button.dataset.likePath);
+    const path = button.dataset.likePath;
     const storageKey = 'says:reaction0:' + path;
     const status = button.closest('.says-card').querySelector('[data-like-status]');
     let liked = false;
     try { liked = localStorage.getItem(storageKey) === '1'; } catch {}
-    const show = count => {
-      button.querySelector('[data-like-count]').textContent = String(Math.max(0, count));
+    const show = () => {
       button.setAttribute('aria-pressed', String(liked));
       button.setAttribute('aria-label', liked ? '取消点赞' : '点赞');
     };
-    async function counter(action) {
-      const query = new URLSearchParams({path, type: 'reaction0'});
-      const response = await fetch(counterURL + (action ? '' : '?' + query), action ? {
-        method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({path, type: 'reaction0', action})
-      } : {credentials: 'same-origin'});
-      const result = await response.json();
-      const count = result.data?.[0]?.reaction0;
-      if (!response.ok || result.errno !== 0 || !Number.isFinite(count)) throw new Error('counter');
-      return count;
-    }
-    counter().then(count => { show(count); button.disabled = false; }).catch(() => {
+    show();
+    if (button.querySelector('[data-like-count]').textContent === '–') {
       button.title = '点赞数量暂时无法加载，请刷新后重试';
-    });
+      return;
+    }
+    button.disabled = false;
     button.addEventListener('click', async () => {
       if (button.disabled) return;
       button.disabled = true;
       status.textContent = '';
       try {
-        const count = await counter(liked ? 'desc' : 'inc');
+        const result = await walineRequest('article', {path, type: 'reaction0', action: liked ? 'desc' : 'inc'});
+        const count = result?.[0]?.reaction0;
+        if (!Number.isFinite(count)) throw new Error('counter');
         liked = !liked;
         try { localStorage.setItem(storageKey, liked ? '1' : '0'); } catch {}
-        show(count);
+        button.querySelector('[data-like-count]').textContent = String(Math.max(0, count));
+        show();
         status.textContent = liked ? '已点赞' : '已取消点赞';
         button.disabled = false;
       } catch {
@@ -169,59 +178,173 @@
     });
   });
 
-  const walineMounts = new WeakMap();
-  let walineReady;
-  function mountWaline(panel, button) {
-    if (walineMounts.has(panel)) return walineMounts.get(panel);
-    const pending = (async () => {
-      panel.textContent = '评论加载中…';
-      try {
-        if (!walineReady) walineReady = Promise.all([
-          import('https://cdn.jsdelivr.net/npm/@waline/client@3.16.0/dist/waline.js'),
-          fetch('/api/comment/api/token', {credentials: 'same-origin'}).then(async response => {
-            const result = await response.json();
-            if (!response.ok || result.errno !== 0) throw new Error('session');
-            if (result.data?.objectId) localStorage.setItem('WALINE_USER', JSON.stringify({...result.data, remember: true}));
-            else localStorage.removeItem('WALINE_USER');
-          })
-        ]).catch(error => { walineReady = null; throw error; });
-        const [client] = await walineReady;
-        const options = JSON.parse(root.dataset.walineOptions);
-        panel.replaceChildren();
-        client.init({...options, reaction: false, el: panel, path: encodeURI(button.dataset.commentPath)});
-        const query = new URLSearchParams({type: 'count', url: button.dataset.commentPath});
-        fetch('/api/comment/api/comment?' + query, {credentials: 'omit'}).then(r => r.json()).then(result => {
-          if (result.errno === 0 && Number.isFinite(result.data?.[0])) {
-            button.querySelector('[data-comment-count]').textContent = result.data[0];
-          }
-        }).catch(() => {});
-      } catch {
-        panel.textContent = '评论暂时无法加载，请收起后重新展开重试。';
-        walineMounts.delete(panel);
-      }
-    })();
-    walineMounts.set(panel, pending);
-    return pending;
+  const panels = [...root.querySelectorAll('[data-comments-panel]')];
+  let signedIn = false, sessionRequest;
+  function setSignedIn(value) {
+    signedIn = value;
+    for (const panel of panels) {
+      const composer = panel.querySelector('[data-comment-form]');
+      const replying = composer.hasAttribute('data-replying');
+      composer.elements.comment.readOnly = !signedIn;
+      composer.querySelector('[type=submit]').textContent = signedIn ? replying ? '回复' : '评论' : '登录后评论';
+    }
+  }
+  function checkSession() {
+    if (!sessionRequest) {
+      sessionRequest = walineRequest('token').then(identity => {
+        // The native API authenticates the same-origin session cookie. Never
+        // store Waline's token or use it in a URL or in client markup.
+        setSignedIn(Boolean(identity?.objectId));
+        return signedIn;
+      }).finally(() => { sessionRequest = null; });
+    }
+    return sessionRequest;
+  }
+  if (panels.length) {
+    checkSession().catch(() => {});
+    document.addEventListener('pointerdown', event => {
+      const row = root.querySelector('[data-comment-active]');
+      if (row && !row.contains(event.target)) row.removeAttribute('data-comment-active');
+    });
   }
 
-  root.querySelectorAll('[data-say-id]').forEach(button => {
-    const panel = document.getElementById(button.getAttribute('aria-controls'));
-    button.addEventListener('click', () => {
-      const open = button.getAttribute('aria-expanded') !== 'true';
-      button.setAttribute('aria-expanded', String(open));
-      button.setAttribute('aria-label', open ? '收起评论' : '展开评论');
-      panel.hidden = !open;
-      if (!open) return;
-      if (button.dataset.commentPath) {
-        mountWaline(panel, button);
-      } else {
-        const link = document.createElement('a');
-        link.href = '/says/' + encodeURIComponent(button.dataset.sayId);
-        link.textContent = '前往详情页查看评论';
-        panel.replaceChildren(link);
+  async function refreshThread(card, panel, toggle) {
+    const id = card.id.slice(4);
+    const response = await fetch(location.pathname + location.search, {
+      credentials: 'omit', cache: 'no-store', redirect: 'error',
+      headers: {'X-Eureka-Say-Comments': id}, signal: AbortSignal.timeout(15000)
+    });
+    if (!response.ok) throw new Error('comments');
+    const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const incoming = parsed.querySelector('[data-say-comment-list]');
+    if (incoming?.dataset.sayCommentList !== id || !/^\d+$/.test(incoming.dataset.count)) throw new Error('comments');
+    panel.querySelector('[data-say-comment-list]').replaceWith(incoming);
+    toggle.querySelector('[data-comment-count]').textContent = incoming.dataset.count;
+  }
+
+  const commentErrors = {
+    DUPLICATE_CONTENT: '这条评论已经提交过。',
+    COMMENT_TOO_FAST: '评论发得太快，请稍后再试。',
+    COMMENT_DISABLED: '这条微博已关闭评论或不再公开。',
+    INVALID_PATH: '找不到这条微博，刷新页面后再试。',
+    VALIDATION_ERROR: '评论内容不符合站点要求，请检查字数后重试。'
+  };
+  for (const panel of panels) {
+    const card = panel.closest('.says-card');
+    const toggle = card.querySelector('[data-comment-toggle]');
+    const composer = panel.querySelector('[data-comment-form]');
+    const home = panel.querySelector('[data-comment-compose-home]');
+    const textarea = composer.elements.comment;
+    const submit = composer.querySelector('[type=submit]');
+    const caption = composer.querySelector('[data-comment-reply-caption]');
+    const status = panel.querySelector('[data-comment-status]');
+    const drafts = new Map();
+    let active, busy = false, uncertain = false;
+
+    function closeComposer({discard = false, focus = false} = {}) {
+      if (!active) return;
+      const {key, button} = active;
+      if (discard) drafts.delete(key);
+      else drafts.set(key, textarea.value);
+      button.setAttribute('aria-expanded', 'false');
+      composer.hidden = true;
+      home.appendChild(composer);
+      active = null;
+      if (focus) button.focus();
+    }
+    function openComposer(button, row, focus = true) {
+      if (busy) return;
+      if (active?.button === button) { closeComposer({focus}); return; }
+      closeComposer();
+      const key = row?.dataset.commentId || '';
+      active = {key, row, button};
+      button.setAttribute('aria-expanded', 'true');
+      if (row) row.nextElementSibling.appendChild(composer);
+      composer.toggleAttribute('data-replying', Boolean(row));
+      caption.hidden = !row;
+      const nick = row?.dataset.commentNick;
+      caption.querySelector('[data-comment-addressee]').textContent = row ? '回复 @' + nick : '';
+      textarea.setAttribute('aria-label', row ? '回复 ' + nick : '评论');
+      textarea.placeholder = row ? '写下你的回复…' : '写下你的评论…';
+      textarea.value = drafts.get(key) || '';
+      submit.textContent = signedIn ? row ? '回复' : '评论' : '登录后评论';
+      composer.hidden = false;
+      if (!uncertain) status.textContent = '';
+      if (focus) (signedIn ? textarea : submit).focus();
+    }
+
+    toggle.addEventListener('click', () => openComposer(toggle));
+    panel.addEventListener('click', event => {
+      const reply = event.target.closest('[data-comment-reply]');
+      const row = event.target.closest('[data-comment-row]');
+      if (!row) return;
+      panel.querySelector('[data-comment-active]')?.removeAttribute('data-comment-active');
+      row.setAttribute('data-comment-active', '');
+      if (reply) openComposer(reply, row);
+    });
+    composer.querySelector('[data-comment-cancel]').addEventListener('click', () => {
+      if (!busy) closeComposer({focus: true});
+    });
+    composer.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !busy) { event.preventDefault(); closeComposer({focus: true}); }
+    });
+    if (location.hash === '#' + card.id) {
+      openComposer(toggle, null, false);
+    } else if (location.hash.startsWith('#' + card.id + '-comment-')) {
+      const row = document.getElementById(location.hash.slice(1));
+      if (row?.matches('[data-comment-row]') && panel.contains(row)) {
+        openComposer(row.querySelector('[data-comment-reply]'), row, false);
+      }
+    }
+
+    composer.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!active || busy || uncertain) return;
+      busy = true;
+      submit.disabled = true;
+      status.textContent = '';
+      let sent = false;
+      try {
+        if (!await checkSession()) {
+          location.assign(commentLoginUrl(location.pathname, location.search, active.row?.id || card.id));
+          return;
+        }
+        const comment = textarea.value.trim();
+        if (!comment) { status.textContent = '请输入评论内容。'; textarea.focus(); return; }
+        const data = {comment, url: panel.dataset.commentPath};
+        if (active.row) {
+          data.pid = active.row.dataset.commentId;
+          data.rid = active.row.dataset.commentRoot;
+        }
+        sent = true;
+        const saved = await walineRequest('comment', data);
+        if (!saved?.objectId) throw new Error('comment');
+        const approved = saved.status === 'approved';
+        closeComposer({discard: true});
+        toggle.focus();
+        status.textContent = approved ? '评论已发表。' : '评论已提交，审核通过后显示。';
+        try {
+          await refreshThread(card, panel, toggle);
+        } catch {
+          status.textContent += ' 列表暂时无法更新，可刷新页面查看。';
+        }
+      } catch (error) {
+        if (!sent) status.textContent = '暂时无法确认登录状态，请重试。';
+        else if (error.status === 401 || error.code === 'UNAUTHORIZED') {
+          setSignedIn(false);
+          status.textContent = '登录已失效，请重新登录。';
+        } else if (error.status >= 400 && error.status < 500) {
+          status.textContent = commentErrors[error.code] || '评论未发送，请确认登录状态和内容后重试。';
+        } else {
+          uncertain = true;
+          status.textContent = '发送结果未确认，内容已保留。请刷新页面核对后再试。';
+        }
+      } finally {
+        busy = false;
+        submit.disabled = uncertain;
       }
     });
-  });
+  }
 
   const dialog = document.querySelector('[data-says-lightbox]');
   let images = [], selected = 0, trigger;
