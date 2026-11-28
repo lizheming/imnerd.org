@@ -53,7 +53,7 @@
       }
     },
     {
-      "src": "^/(?:tags[.]html|categories[.]html|rss[.]xml|sitemap[.]xml|opensearch[.]xml)$",
+      "src": "^/(?:[^/]+[.]html|rss[.]xml|sitemap[.]xml|opensearch[.]xml)$",
       "methods": ["GET", "HEAD"],
       "missing": [
         { "type": "header", "key": "cookie" },
