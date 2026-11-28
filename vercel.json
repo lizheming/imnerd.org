@@ -53,6 +53,33 @@
       }
     },
     {
+      "src": "^/(?!(?:admin|api|mcp|oauth)(?:/|[.]|$)|[.]well-known/).*[.](?:html|xml)$",
+      "caseSensitive": false,
+      "methods": ["GET", "HEAD"],
+      "missing": [
+        { "type": "header", "key": "cookie" },
+        { "type": "header", "key": "authorization" },
+        { "type": "query", "key": "preview" }
+      ],
+      "headers": {
+        "Vercel-CDN-Cache-Control": "public, s-maxage=120"
+      },
+      "continue": true
+    },
+    {
+      "src": "^/$",
+      "methods": ["GET", "HEAD"],
+      "missing": [
+        { "type": "header", "key": "cookie" },
+        { "type": "header", "key": "authorization" },
+        { "type": "query", "key": "preview" }
+      ],
+      "headers": {
+        "Vercel-CDN-Cache-Control": "public, s-maxage=120"
+      },
+      "continue": true
+    },
+    {
       "src": "/(.*)",
       "dest": "/main.js"
     }
