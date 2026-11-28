@@ -1,11 +1,22 @@
 <% layout('./layout') %>
-<% const archive = await firekylin.widget('Widget_Archive_Eureka', {type: 'post'}); const site = await firekylin.widget('Widget_Options'); archive.next(); const post = archive.row; const plainText = archive.content().replace(/<[^>]+>/g, '').replace(/&[^;]+;/g, ' ').trim(); const wordCount = Array.from(plainText.replace(/\s+/g, '')).length; const readingMinutes = Math.max(1, Math.ceil(wordCount / 400)); const ageDays = Math.max(0, Math.floor((Date.now() - new Date(post.update_time || post.create_time).getTime()) / 86400000)); %>
+<%
+const archive = await firekylin.widget('Widget_Archive', {type: 'post'});
+const site = await firekylin.widget('Widget_Options');
+archive.next();
+const post = archive.row;
+const source = await firekylin.widget('Widget_Eureka_PostMarkdown', {post});
+const markdown = source.row.markdown;
+const plainText = archive.content().replace(/<[^>]+>/g, '').replace(/&[^;]+;/g, ' ').trim();
+const wordCount = Array.from(plainText.replace(/\s+/g, '')).length;
+const readingMinutes = Math.max(1, Math.ceil(wordCount / 400));
+const ageDays = Math.max(0, Math.floor((Date.now() - new Date(post.update_time || post.create_time).getTime()) / 86400000));
+%>
 <% block('title', () => { %><%= archive.title() %> - <%= site.title() %><% }) %>
 <% block('headers', () => { %><link rel="canonical" href="<%= site.siteUrl + archive.permalink %>"><meta property="og:type" content="article"><meta property="og:title" content="<%= archive.title() %>"><meta property="og:url" content="<%= site.siteUrl + archive.permalink %>"><% }) %>
 <% await blockAsync('content', async () => { %>
 <div class="grid grid-cols-2 lg:grid-cols-8 gap-4 lg:pt-12">
   <article class="article-card col-span-2 lg:col-span-6 bg-secondary-bg rounded px-6 py-8">
-    <header class="article-header"><h1 class="font-bold text-3xl text-primary-text"><%= archive.title() %></h1><%~ include('./layouts/partials/components/post-metadata-full', {archive, post, wordCount, readingMinutes, spriteUrl: site.themeUrl('res/fontawesome/all.svg')}) %></header>
+    <header class="article-header"><h1 class="font-bold text-3xl text-primary-text"><%= archive.title() %></h1><%~ include('./layouts/partials/components/post-metadata-full', {archive, post, markdown, wordCount, readingMinutes, spriteUrl: site.themeUrl('res/fontawesome/all.svg')}) %></header>
     <% if (ageDays > 180) { %><p class="expired-tips">提醒：本文最后更新于 <%= ageDays %> 天前，文中所描述的信息可能已发生改变，请谨慎使用。</p><% } %>
     
     <% if (post.featuredImage) {%>
