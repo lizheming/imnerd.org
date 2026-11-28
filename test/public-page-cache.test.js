@@ -4,12 +4,15 @@ const assert = require('node:assert/strict');
 const {createServer} = require('node:http');
 const {once} = require('node:events');
 const {test} = require('node:test');
-const withPublicFeedCache = require('../lib/public-feed-cache');
+const withPublicPageCache = require('../lib/public-page-cache');
 
-test('only a successful anonymous RSS response gets a Vercel cache TTL', async t => {
+test('only successful anonymous allowlisted HTML and XML get a Vercel cache TTL', async t => {
   let mode = 'rss';
-  const server = createServer(withPublicFeedCache((_req, res) => {
-    res.setHeader('Content-Type', mode === 'html' ? 'text/html' : 'text/xml; charset=utf-8');
+  const server = createServer(withPublicPageCache((req, res) => {
+    const html = mode === 'html' || (mode !== 'wrong-type' && req.url.endsWith('.html'));
+    res.setHeader('Content-Type', html ? 'text/html' : 'text/xml; charset=utf-8');
+    if (mode === 'vary-cookie') res.setHeader('Vary', 'Accept-Encoding, Cookie');
+    if (mode === 'vary-encoding') res.setHeader('Vary', 'Accept-Encoding');
     res.setHeader('Cache-Control', mode === 'private' ? 'private, no-store' : 'public, max-age=0, must-revalidate');
     if (mode === 'cookie') res.setHeader('Set-Cookie', 'session=value');
     if (mode === 'existing-cdn') res.setHeader('CDN-Cache-Control', 'no-store');
@@ -31,18 +34,26 @@ test('only a successful anonymous RSS response gets a Vercel cache TTL', async t
     return response.headers;
   };
   const header = 'vercel-cdn-cache-control';
-  for (const method of ['GET', 'HEAD']) {
-    const headers = await getHeaders('/rss.xml', {method});
-    assert.equal(headers.get(header), 'public, s-maxage=120');
-    assert.equal(headers.get('cache-control'), 'public, max-age=0, must-revalidate');
+  for (const path of ['/rss.xml', '/sitemap.xml', '/opensearch.xml', '/tags.html', '/categories.html']) {
+    for (const method of ['GET', 'HEAD']) {
+      const headers = await getHeaders(path, {method});
+      assert.equal(headers.get(header), 'public, s-maxage=120', path);
+      assert.equal(headers.get('cache-control'), 'public, max-age=0, must-revalidate');
+    }
   }
-  for (const path of ['/', '/your-post.html', '/rss.xml?preview=1', '/admin', '/index.xml']) {
+  for (const path of ['/', '/your-post.html', '/post/private.html', '/page/about.html', '/api/feed.xml',
+    '/admin/login.html', '/search.html', '/rss.xml?preview=1', '/tags.html?page=2', '/index.xml']) {
     assert.equal((await getHeaders(path)).get(header), null, path);
   }
+  mode = 'wrong-type';
+  assert.equal((await getHeaders('/tags.html')).get(header), null);
+  mode = 'vary-encoding';
+  assert.equal((await getHeaders('/rss.xml')).get(header), 'public, s-maxage=120');
+  mode = 'rss';
   for (const options of [{method: 'POST'}, {headers: {cookie: 'session=value'}}, {headers: {authorization: 'Bearer test'}}]) {
     assert.equal((await getHeaders('/rss.xml', options)).get(header), null);
   }
-  for (mode of ['html', 'private', 'cookie', 'existing-cdn', 'redirect', 'error', 'explicit-headers']) {
+  for (mode of ['html', 'vary-cookie', 'private', 'cookie', 'existing-cdn', 'redirect', 'error', 'explicit-headers']) {
     assert.equal((await getHeaders('/rss.xml')).get(header), null, mode);
   }
 });

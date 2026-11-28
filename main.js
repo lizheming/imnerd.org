@@ -1,5 +1,5 @@
 const Firekylin = require('firekylin');
-const withPublicFeedCache = require('./lib/public-feed-cache');
+const withPublicPageCache = require('./lib/public-page-cache');
 Firekylin.config = require('./firekylin.config');
 
-module.exports = withPublicFeedCache(Firekylin);
+module.exports = withPublicPageCache(Firekylin);
