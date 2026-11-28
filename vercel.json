@@ -72,8 +72,7 @@
       "missing": [
         { "type": "header", "key": "cookie" },
         { "type": "header", "key": "authorization" },
-        { "type": "query", "key": "preview" },
-        { "type": "query", "key": "page" }
+        { "type": "query", "key": "preview" }
       ],
       "headers": {
         "Vercel-CDN-Cache-Control": "public, s-maxage=120"
