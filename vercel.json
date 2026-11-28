@@ -53,6 +53,19 @@
       }
     },
     {
+      "src": "^/(?:tags[.]html|categories[.]html|rss[.]xml|sitemap[.]xml|opensearch[.]xml)$",
+      "methods": ["GET", "HEAD"],
+      "missing": [
+        { "type": "header", "key": "cookie" },
+        { "type": "header", "key": "authorization" },
+        { "type": "query", "key": "preview" }
+      ],
+      "headers": {
+        "Vercel-CDN-Cache-Control": "public, s-maxage=120"
+      },
+      "continue": true
+    },
+    {
       "src": "/(.*)",
       "dest": "/main.js"
     }
